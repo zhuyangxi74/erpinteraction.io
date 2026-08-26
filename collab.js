@@ -12,7 +12,7 @@
       {key:'templateName',label:'模板名称',question:'需要建立什么模板？',required:true,placeholder:'例如：年度预算模板'},
       {key:'scope',label:'管理范围',question:'模板覆盖哪些组织？',required:true,placeholder:'例如：集团、全公司或指定分公司'},
       {key:'metrics',label:'记录内容',question:'需要记录和对比哪些数据？',required:true,placeholder:'例如：预算金额、实际发生额'},
-      {key:'period',label:'预算周期',question:'按年度、季度还是月度管理？',required:true,placeholder:'请补充预算周期'},
+      {key:'period',label:'预算周期',question:'按年度、季度还是月度管理？',placeholder:'未说明，可提交后由实施顾问确认'},
       {key:'dimensions',label:'预算维度',question:'除公司外，还要按部门、科目或项目拆分吗？',placeholder:'例如：公司、部门、科目、项目'},
       {key:'owners',label:'填报与审核',question:'由谁填报、汇总和确认？',placeholder:'例如：分公司填报、总部财务审核'},
       {key:'permissions',label:'查看权限',question:'不同公司之间的数据如何隔离？',placeholder:'例如：分公司仅查看本公司，总部查看全部'}]},
@@ -76,7 +76,7 @@
   function questionnaireForm(){
     const q=collab.questionnaire;if(!q)return '';
     const def=definitions[q.type]||definitions.generic,stats=questionnaireStats(q);
-    return `<div class="ai-form-card"><div class="ai-form-title"><div><b>${def.title}</b><span>AI已自动填写原始要求中明确的内容，请只补充标为“待补充”的项目</span></div><em>${q.completed?'已确认':`已填写 ${stats.filled}/${stats.total}`}</em></div><div class="requirement-match"><span>AI识别场景</span><b>${def.name}</b><i>与当前需求匹配</i></div><div class="ai-table">${def.items.map(item=>fieldMarkup(item,q)).join('')}</div><div class="ai-form-actions"><span>系统不会替您编造原始要求中没有的信息</span><button class="primary" data-collab="saveQuestionnaire">保存并生成需求摘要</button></div></div>`;
+    return `<div class="ai-form-card"><div class="ai-form-title"><div><b>${def.title}</b><span>AI已自动填写原始要求中明确的内容，您可以补充后直接提交</span></div><em>${q.completed?'已提交':`已填写 ${stats.filled}/${stats.total}`}</em></div><div class="requirement-match"><span>AI识别场景</span><b>${def.name}</b><i>与当前需求匹配</i></div><div class="ai-table">${def.items.map(item=>fieldMarkup(item,q)).join('')}</div><div class="ai-form-actions"><span>未提供的信息会标记为“待确认”，不会阻止提交</span><button class="primary" data-collab="submitQuestionnaire">确认并提交需求</button></div></div>`;
   }
 
   function artifactCard(kind,title,item,action){return `<article class="delivery-card ${item?'ready':''}"><div class="delivery-icon">${item?'✓':'○'}</div><div><small>${kind}</small><b>${title}</b><span>${item?'已交付 · '+item.time:'等待上一步完成'}</span></div>${item?`<button class="secondary" data-collab="${action}">查看</button>`:'<button disabled>待交付</button>'}</article>`}
@@ -91,23 +91,19 @@
   function privateArea(){
     if(collab.role!=='customer')return `<div class="privacy-notice"><b>客户与AI的沟通细节已隐藏</b><p>${roleTips[collab.role]}</p><span>客户确认后的结构化需求方案会显示在下方。</span></div>`;
     const log=collab.privateNotes.length?collab.privateNotes.map(n=>`<div><b>${n.role==='customer'?'客户':'AI'}</b><p>${esc(n.text)}</p></div>`).join(''):'<div class="private-welcome"><b>先用自己的话说明需求</b><p>例如：建立预算模板，记录全公司和所有分公司的预算及实际发生额。</p></div>';
-    return `<div class="private-ai"><div class="private-head"><div><b>客户 × AI 需求整理</b><span>先自由描述，AI会把已知信息自动带入对应表格</span></div><em>整理中</em></div><div class="private-log">${log}</div>${questionnaireForm()}<div class="private-compose"><textarea id="privateInput" rows="2" placeholder="继续补充业务要求，AI会更新表格中的对应字段"></textarea><button class="primary" data-collab="askAI">发送给AI</button></div><div class="publish-box"><div><b>确认后发送</b><span>只把最终需求方案发送给实施顾问。</span></div><button class="primary" data-collab="publishRequirement">生成并发送需求方案</button></div></div>`;
+    return `<div class="private-ai"><div class="private-head"><div><b>客户 × AI 需求整理</b><span>先自由描述，AI会把已知信息自动带入对应表格</span></div><em>整理中</em></div><div class="private-log">${log}</div>${questionnaireForm()}<div class="private-compose"><textarea id="privateInput" rows="2" placeholder="继续补充业务要求，AI会更新表格中的对应字段"></textarea><button class="primary" data-collab="askAI">发送给AI</button></div></div>`;
   }
   function render(){
     const root=document.querySelector('#assistant');if(!root)return;
     root.innerHTML=`<div class="toolbar"><div><h2>三方协作与交付中心</h2><p>客户、实施顾问和开发人员按阶段传递已确认成果。</p></div><div class="role-switch">${Object.entries(roles).map(([k,v])=>`<button data-role-switch="${k}" class="${collab.role===k?'active':''}">${v}视角</button>`).join('')}</div></div><div class="visibility-banner"><b>当前身份：${roles[collab.role]}</b><span>${roleTips[collab.role]}</span></div><div class="collab-layout"><aside class="collab-rail"><h3>协作流程</h3><div class="stage ${collab.requirement?'done':'active'}"><i>${collab.requirement?'✓':'1'}</i><span><b>客户确认需求</b><small>AI整理 → 需求方案</small></span></div><div class="stage ${collab.implementation?'done':collab.requirement?'active':''}"><i>${collab.implementation?'✓':'2'}</i><span><b>顾问制定实施方案</b><small>需求方案 → 实施文档</small></span></div><div class="stage ${collab.code?'done':collab.implementation?'active':''}"><i>${collab.code?'✓':'3'}</i><span><b>开发人员完成交付</b><small>实施文档 → 开发代码</small></span></div><div class="participant-list"><h4>项目参与者</h4><div><span class="p customer">客</span><b>客户</b><small>${collab.role==='customer'?'当前在线':'可查看交付'}</small></div><div><span class="p consultant">顾</span><b>实施顾问</b><small>${collab.requirement?'已接收需求':'等待需求'}</small></div><div><span class="p developer">开</span><b>开发人员</b><small>${collab.implementation?'已接收实施文档':'等待实施文档'}</small></div><div><span class="p ai">AI</span><b>AI助手</b><small>辅助整理</small></div></div></aside><main class="collab-main">${privateArea()}<div class="shared-head"><h3>项目协作对话</h3><span>只显示确认后的阶段成果</span></div><div class="handoff-list">${sharedTimeline()}</div></main><aside class="delivery-panel"><div class="delivery-head"><h3>项目交付</h3><span>三项成果</span></div>${artifactCard('01','需求',collab.requirement,'viewRequirement')}${artifactCard('02','实施文档',collab.implementation,'viewImplementation')}${artifactCard('03','开发代码',collab.code,'viewCode')}</aside></div>`;
   }
-  function saveQuestionnaire(){
+  function submitQuestionnaire(){
     const q=collab.questionnaire,def=definitions[q.type]||definitions.generic;
     def.items.forEach(item=>{const el=document.querySelector(`[data-q-key="${item.key}"]`);if(el){const before=q.values[item.key];q.values[item.key]=el.value.trim();if(q.values[item.key]!==before&&q.values[item.key])q.sources[item.key]='manual';if(!q.values[item.key])q.sources[item.key]='missing'}});
-    const missing=def.items.filter(x=>x.required&&!q.values[x.key]);q.completed=missing.length===0;
-    if(missing.length){store();return toast(`还需补充：${missing.map(x=>x.label).join('、')}`)}
-    collab.privateNotes.push({role:'ai',text:'已完成结构化整理。原始要求和您补充的内容已合并为需求摘要，请确认后发送给实施顾问。'});store();toast('需求摘要已生成');
-  }
-  function publishRequirement(){
-    const q=collab.questionnaire;if(!q?.completed)return toast('请先补齐必填项并保存需求表');
-    const def=definitions[q.type]||definitions.generic;
-    const details=def.items.filter(x=>q.values[x.key]).map(x=>`${x.label}：${q.values[x.key]}`).join('；');
+    const missingCore=def.items.filter(x=>x.required&&!q.values[x.key]);
+    if(missingCore.length)return toast(`请先填写：${missingCore.map(x=>x.label).join('、')}`);
+    q.completed=true;
+    const details=def.items.map(x=>`${x.label}：${q.values[x.key]||'待确认'}`).join('；');
     collab.requirement={title:`${def.name}需求方案`,content:`原始需求：${allCustomerText()}；${details}`,time:now()};store();toast('需求方案已发送给实施顾问');
   }
   function showDoc(title,body,type){modal(`<div class="modal-head"><div><h2>${title}</h2><p>${type} · 三方协作交付物</p></div><button data-close>×</button></div><div class="document-preview"><h3>${title}</h3><p>${body}</p><h4>交付状态</h4><p>已确认并进入下一阶段。</p></div><div class="modal-actions"><button class="secondary" data-close>关闭</button><button class="primary" onclick="toast('已下载交付物（演示）')">下载</button></div>`)}
@@ -123,8 +119,7 @@
       const def=definitions[collab.questionnaire.type],stats=questionnaireStats(collab.questionnaire);
       collab.privateNotes.push({role:'ai',text:`已识别为“${def.name}”需求，并从您的描述中自动填写了 ${stats.filled} 项。请只补充表格中标为“待补充”的内容。`});store();return;
     }
-    if(action==='saveQuestionnaire'){saveQuestionnaire();return}
-    if(action==='publishRequirement'){publishRequirement();return}
+    if(action==='submitQuestionnaire'){submitQuestionnaire();return}
     if(action==='draftImplementation'){
       modal(`<div class="modal-head"><div><h2>编写实施文档</h2><p>基于已确认需求，形成开发人员可执行的实施说明。</p></div><button data-close>×</button></div><label class="field"><span>实施文档标题</span><input id="implTitle" value="业务应用实施方案"></label><label class="field"><span>实施内容</span><textarea id="implBody" rows="7">配置数据模型、业务表单和业务规则；完成权限配置、测试验证与用户确认。</textarea></label><div class="modal-actions"><button class="secondary" data-close>取消</button><button class="primary" id="sendImplementation">发送给开发人员</button></div>`);
       document.querySelector('#sendImplementation').onclick=()=>{collab.implementation={title:document.querySelector('#implTitle').value,content:document.querySelector('#implBody').value,time:now()};localStorage.setItem('erp-ai-collab',JSON.stringify(collab));closeModal();render();toast('实施文档已发送给开发人员')};return;
