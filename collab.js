@@ -1,8 +1,8 @@
 (function(){
-  const initial={role:'customer',projectId:`project-${Date.now()}`,projectMeta:{name:'',organization:'',department:'',owner:'',planDate:''},privateNotes:[],questionnaire:null,requirement:null,implementation:null,implementationVersions:[],code:null,codeVersions:[],acceptance:null,events:[]};
+  const initial={role:'customer',projectId:`project-${Date.now()}`,projectMeta:{name:'',organization:'',department:'',owner:'',planDate:''},privateNotes:[],questionnaire:null,pendingIntent:null,requirement:null,implementation:null,implementationVersions:[],code:null,codeVersions:[],acceptance:null,events:[]};
   let collab=JSON.parse(localStorage.getItem('erp-ai-collab')||'null')||structuredClone(initial);
   if(!collab.projectId){collab.projectId=`project-${Date.now()}`;localStorage.setItem('erp-ai-collab',JSON.stringify(collab))}
-  collab.projectMeta=collab.projectMeta||structuredClone(initial.projectMeta);collab.implementationVersions=collab.implementationVersions||[];collab.codeVersions=collab.codeVersions||[];collab.events=collab.events||[];
+  collab.projectMeta=collab.projectMeta||structuredClone(initial.projectMeta);collab.implementationVersions=collab.implementationVersions||[];collab.codeVersions=collab.codeVersions||[];collab.events=collab.events||[];collab.pendingIntent=collab.pendingIntent||null;
   const roles={customer:'客户',consultant:'实施顾问',developer:'开发人员'};
   const roleTips={customer:'您可以先与AI整理需求，确认后的方案再发送给实施顾问。',consultant:'查看客户确认后的需求方案，整理实施文档并发送给开发人员。',developer:'查看已确认需求和实施文档，完成开发交付。'};
   const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -58,7 +58,11 @@
       const metrics=[];if(/预算/.test(text))metrics.push('预算');if(/实际发生额|实际金额|实际支出/.test(text))metrics.push(firstMatch(text,[/(实际发生额|实际金额|实际支出)/]));
       return {templateName:templateName||'',scope,metrics:[...new Set(metrics)].join('、'),period:firstMatch(text,[/(年度|季度|月度|每月|每季度|每年)/]),dimensions:scope&&/分公司/.test(scope)?'公司、分公司':'',owners:'',permissions:''};
     }
-    if(type==='purchase')return {fields:firstMatch(text,[/(申请人[^。；]*?(?:原因|备注|附件))/]),approvers:firstMatch(text,[/((?:部门经理|采购经理|财务总监|总经理)(?:[^。；]*审批)?)/]),amount:firstMatch(text,[/((?:超过|大于|达到)[^。；]*?(?:审批|通过))/]),reject:firstMatch(text,[/(退回[^，。；]*)/]),timeout:firstMatch(text,[/((?:\d+小时|\d+天)[^，。；]*)/])};
+    if(type==='purchase'){
+      const approvers=['部门经理','采购经理','财务总监','总经理'].filter(x=>text.includes(x));
+      const amount=[...text.matchAll(/(?:超过|大于|达到)[^，。；]*(?:审批|通过)/g)].map(x=>x[0]);
+      return {fields:firstMatch(text,[/(申请人[^。；]*?(?:原因|备注|附件))/]),approvers:[...new Set(approvers)].join('、'),amount:[...new Set(amount)].join('；'),reject:firstMatch(text,[/(退回[^，。；]*)/]),timeout:firstMatch(text,[/((?:\d+小时|\d+天)[^，。；]*)/])};
+    }
     if(type==='approval')return {scene:firstMatch(text,[/([^，。；]*(?:报销|请假|审批|申请流程))/]),fields:'',approvers:firstMatch(text,[/((?:部门经理|财务|总经理|负责人)[^。；]*审批)/]),conditions:firstMatch(text,[/((?:超过|大于|小于|达到)[^。；]*)/]),exceptions:firstMatch(text,[/((?:驳回|超时|退回)[^。；]*)/])};
     return {goal:text,users:'',data:'',process:'',output:''};
   }
@@ -74,7 +78,7 @@
     });
     return {type,title:def.title,values,sources,completed:false};
   }
-  function allCustomerText(){return collab.privateNotes.filter(n=>n.role==='customer').map(n=>n.text).join('；')}
+  function allCustomerText(){return collab.privateNotes.filter(n=>n.role==='customer'&&!n.pendingIntent).map(n=>n.text).join('；')}
   function questionnaireStats(q){const def=definitions[q.type]||definitions.generic;const filled=def.items.filter(x=>q.values?.[x.key]).length;return {filled,total:def.items.length,missing:def.items.length-filled}}
   function fieldMarkup(item,q){
     const value=q.values?.[item.key]||'',source=q.sources?.[item.key]||'missing';
@@ -107,12 +111,16 @@
       if(!collab.implementation)return `<div class="role-workbench empty-workbench"><b>等待实施顾问提交方案</b><span>实施文档到达后，您可以上传源代码包、数据库脚本、接口文档和部署说明。</span></div>`;
       return `<div class="role-workbench">${collab.acceptance?.status==='rejected'?`<div class="revision-alert"><b>客户已驳回本次交付</b><span>${esc(collab.acceptance.note)}</span></div>`:''}<div class="workbench-head"><div><span class="role-tag developer">开发人员工作台</span><h3>${collab.code?'更新开发交付':'提交开发交付'}</h3><p>上传客户可以接收和后续维护的完整开发成果。</p></div><em>${collab.code?'已交付，可更新':'等待交付'}</em></div><div class="workbench-grid"><label class="field"><span>交付名称 *</span><input id="codeTitle" value="${esc(collab.code?.title||'业务应用源代码与配置')}"></label><label class="field"><span>版本</span><input id="codeVersion" value="${esc(collab.code?.version||'V1.0.0')}"></label><label class="field span2"><span>代码或交付包 *</span><input id="codeFile" type="file" accept=".zip,.rar,.7z,.json,.yaml,.yml,.sql,.js,.ts,.vue,.java,.py,.md,.pdf"></label><label class="field span2"><span>交付说明</span><textarea id="codeNote" rows="3" placeholder="说明包含内容、部署方式、依赖与已知问题">${esc(collab.code?.content||'')}</textarea></label></div><div id="codeFileHint" class="selected-file">${collab.code?.file?`当前文件：${esc(collab.code.file.name)} · 上传新文件可替换`:'建议上传 ZIP 完整包，也可提交脚本、配置或说明文档'}</div><div class="delivery-checklist"><span>交付包建议包含</span><i>源代码</i><i>数据库脚本</i><i>接口说明</i><i>部署说明</i></div><div class="workbench-actions"><span>提交后，客户可在项目交付中查看和下载。</span><button class="primary" data-collab="submitCode">${collab.code?'更新开发交付':'完成开发交付'}</button></div>${versionHistory('code')}</div>`;
     }
-    const log=collab.privateNotes.length?collab.privateNotes.map(n=>`<div><b>${n.role==='customer'?'客户':'AI'}</b><p>${esc(n.text)}</p></div>`).join(''):'<div class="private-welcome"><b>先用自己的话说明需求</b><p>例如：建立预算模板，记录全公司和所有分公司的预算及实际发生额。</p></div>';
-    return `${acceptancePanel()}<div class="private-ai"><div class="private-head"><div><b>客户 × AI 需求整理</b><span>先自由描述，AI会把已知信息自动带入对应表格</span></div><em>整理中</em></div><div class="private-log">${log}</div>${questionnaireForm()}<div class="private-compose"><textarea id="privateInput" rows="2" placeholder="继续补充业务要求，AI会更新表格中的对应字段"></textarea><button class="primary" data-collab="askAI">发送给AI</button></div></div>`;
+    const log=collab.privateNotes.length?collab.privateNotes.map(n=>`<div class="flow-message ${n.role}"><span>${n.role==='customer'?'客户':'AI'}</span><p>${esc(n.text)}</p></div>`).join(''):'<div class="dialog-welcome"><span class="ai-orb">AI</span><div><b>请先描述您想解决的业务问题</b><p>例如：建立预算模板，记录全公司和所有分公司的预算及实际发生额。</p></div></div>';
+    const intentChoice=collab.pendingIntent?`<div class="intent-switch"><div><span>检测到新的业务主题</span><b>“${definitions[collab.questionnaire?.type||'generic'].name}”与“${definitions[collab.pendingIntent.type]?.name||'新需求'}”不是同一项需求</b><p>请选择如何处理，系统不会再自动混入当前表格。</p></div><button class="primary" data-collab="startNewIntent">新建${definitions[collab.pendingIntent.type]?.name||''}需求（推荐）</button><button class="secondary" data-collab="keepCurrentIntent">作为当前需求的补充说明</button></div>`:'';
+    const currentStep=collab.questionnaire?.completed&&collab.requirement?3:collab.questionnaire?2:1;
+    const formContent=collab.questionnaire?questionnaireForm():`<div class="form-waiting"><span>02</span><h3>结构化需求表将在这里生成</h3><p>您在左侧描述业务后，AI会识别业务场景，并把已经明确的信息自动填写到表格中。</p><div><i>业务字段</i><i>使用范围</i><i>审批流程</i><i>业务规则</i></div></div>`;
+    return `${acceptancePanel()}<div class="customer-flow"><div class="customer-flow-head"><div><span class="role-tag customer">客户需求整理</span><h3>先对话，再确认表格</h3></div><div class="flow-progress">${[['1','与AI对话'],['2','补充需求表'],['3','提交顾问']].map((x,i)=>`<div class="${currentStep>i+1?'done':currentStep===i+1?'active':''}"><i>${currentStep>i+1?'✓':x[0]}</i><b>${x[1]}</b></div>`).join('<em>→</em>')}</div></div><div class="customer-flow-grid"><section class="dialog-lane"><div class="lane-head"><div><span class="lane-number">01</span><b>AI需求对话</b></div><small>用自己的话连续描述，AI会追问缺失内容</small></div><div class="dialog-log">${log}${intentChoice}</div><div class="dialog-compose"><textarea id="privateInput" rows="3" placeholder="${collab.pendingIntent?'请先处理上方检测到的新业务主题':'请输入业务想法、流程或需要解决的问题…'}" ${collab.pendingIntent?'disabled':''}></textarea><div><small>${collab.pendingIntent?'请选择新建需求或保留为补充说明':'发送后，右侧表格会同步更新'}</small><button class="primary" data-collab="askAI" ${collab.pendingIntent?'disabled':''}>发送给AI →</button></div></div></section><section class="form-lane"><div class="lane-head"><div><span class="lane-number">02</span><b>AI生成需求表</b></div><small>绿色为已识别，黄色为需要客户补充</small></div><div class="form-lane-body">${formContent}</div></section></div></div>`;
   }
   function render(){
     const root=document.querySelector('#assistant');if(!root)return;
-    root.innerHTML=`<div class="toolbar"><div><h2>三方协作与交付中心</h2><p>客户、实施顾问和开发人员按阶段传递已确认成果。</p></div><div class="collab-toolbar-actions"><button class="secondary" data-collab="projectMeta">项目资料</button><div class="role-switch">${Object.entries(roles).map(([k,v])=>`<button data-role-switch="${k}" class="${collab.role===k?'active':''}">${v}视角</button>`).join('')}</div></div></div><div class="ai-boundary"><span class="ai-chip">AI处理</span><b>理解需求、自动填表、检查遗漏、辅助生成</b><i></i><span class="human-chip">人工确认</span><b>提交、审核、开发、验收与发布</b></div><div class="visibility-banner"><b>当前身份：${roles[collab.role]}</b><span>${roleTips[collab.role]}</span></div><div class="collab-layout"><aside class="collab-rail"><h3>协作流程</h3><div class="stage ${collab.requirement?'done':'active'}"><i>${collab.requirement?'✓':'1'}</i><span><b>客户确认需求</b><small><em class="ai-mini">AI</em> 整理 · <em class="human-mini">人工</em>确认</small></span></div><div class="stage ${collab.implementation?'done':collab.requirement?'active':''}"><i>${collab.implementation?'✓':'2'}</i><span><b>顾问制定实施方案</b><small><em class="ai-mini">AI</em> 辅助 · <em class="human-mini">顾问</em>提交</small></span></div><div class="stage ${collab.code?'done':collab.implementation?'active':''}"><i>${collab.code?'✓':'3'}</i><span><b>开发人员完成交付</b><small><em class="ai-mini">AI</em> 生成 · <em class="human-mini">开发</em>复核</small></span></div><div class="stage ${collab.acceptance?.status==='accepted'?'done':collab.code?'active':''}"><i>${collab.acceptance?.status==='accepted'?'✓':'4'}</i><span><b>客户验收</b><small><em class="human-mini">人工</em>通过或驳回</small></span></div><div class="participant-list"><h4>项目参与者</h4><div><span class="p customer">客</span><b>客户</b><small>${collab.role==='customer'?'当前在线':'可查看交付'}</small></div><div><span class="p consultant">顾</span><b>实施顾问</b><small>${collab.requirement?'已接收需求':'等待需求'}</small></div><div><span class="p developer">开</span><b>开发人员</b><small>${collab.implementation?'已接收实施文档':'等待实施文档'}</small></div><div><span class="p ai">AI</span><b>AI助手</b><small>辅助整理与生成</small></div></div></aside><main class="collab-main">${privateArea()}<div class="shared-head"><h3>项目协作对话</h3><span>只显示确认后的阶段成果</span></div><div class="handoff-list">${sharedTimeline()}</div></main><aside class="delivery-panel"><div class="delivery-head"><h3>项目交付</h3><span>三项成果</span></div>${artifactCard('01','需求',collab.requirement,'viewRequirement')}${artifactCard('02','实施文档',collab.implementation,'viewImplementation')}${artifactCard('03','开发代码',collab.code,'viewCode')}</aside></div>`;
+    root.innerHTML=`<div class="center-tabs"><button class="active" data-go="assistant">AI需求对话</button><button data-go="requirements">需求列表与文件</button></div><div class="toolbar"><div><h2>需求协作中心</h2><p>客户先与AI整理需求，再由实施顾问和开发人员承接已确认成果。</p></div><div class="collab-toolbar-actions"><button class="primary" data-collab="openCustomerChat">打开AI需求对话</button><button class="secondary" data-collab="projectMeta">项目资料</button><div class="role-switch">${Object.entries(roles).map(([k,v])=>`<button data-role-switch="${k}" class="${collab.role===k?'active':''}">${v}视角</button>`).join('')}</div></div></div><div class="ai-boundary"><span class="ai-chip">AI处理</span><b>理解需求、解析Excel、检查遗漏</b><i></i><span class="human-chip">人工完成</span><b>顾问提交实施方案、开发人员提交代码、客户验收</b></div><div class="visibility-banner"><b>当前身份：${roles[collab.role]}</b><span>${roleTips[collab.role]}</span></div><div class="collab-layout"><aside class="collab-rail"><h3>协作流程</h3><div class="stage ${collab.requirement?'done':'active'}"><i>${collab.requirement?'✓':'1'}</i><span><b>客户确认需求</b><small><em class="ai-mini">AI</em> 整理 · <em class="human-mini">人工</em>确认</small></span></div><div class="stage ${collab.implementation?'done':collab.requirement?'active':''}"><i>${collab.implementation?'✓':'2'}</i><span><b>顾问制定实施方案</b><small><em class="ai-mini">AI</em> 辅助 · <em class="human-mini">顾问</em>提交</small></span></div><div class="stage ${collab.code?'done':collab.implementation?'active':''}"><i>${collab.code?'✓':'3'}</i><span><b>开发人员提交代码</b><small><em class="human-mini">开发</em>上传代码包和交付说明</small></span></div><div class="stage ${collab.acceptance?.status==='accepted'?'done':collab.code?'active':''}"><i>${collab.acceptance?.status==='accepted'?'✓':'4'}</i><span><b>客户验收</b><small><em class="human-mini">人工</em>通过或驳回</small></span></div><div class="participant-list"><h4>项目参与者</h4><div><span class="p customer">客</span><b>客户</b><small>${collab.role==='customer'?'当前在线':'可查看交付'}</small></div><div><span class="p consultant">顾</span><b>实施顾问</b><small>${collab.requirement?'已接收需求':'等待需求'}</small></div><div><span class="p developer">开</span><b>开发人员</b><small>${collab.implementation?'已接收实施文档':'等待实施文档'}</small></div><div><span class="p ai">AI</span><b>AI助手</b><small>辅助理解和检查需求</small></div></div></aside><main class="collab-main">${privateArea()}<div class="shared-head"><h3>项目协作对话</h3><span>只显示确认后的阶段成果</span></div><div class="handoff-list">${sharedTimeline()}</div></main><aside class="delivery-panel"><div class="delivery-head"><h3>项目交付</h3><span>三项成果</span></div>${artifactCard('01','需求',collab.requirement,'viewRequirement')}${artifactCard('02','实施文档',collab.implementation,'viewImplementation')}${artifactCard('03','开发代码',collab.code,'viewCode')}</aside></div>`;
+    requestAnimationFrame(()=>{const log=document.querySelector('.dialog-log');if(log)log.scrollTop=log.scrollHeight});
   }
   function submitQuestionnaire(){
     const q=collab.questionnaire,def=definitions[q.type]||definitions.generic;
@@ -121,21 +129,35 @@
     if(missingCore.length)return toast(`请先填写：${missingCore.map(x=>x.label).join('、')}`);
     q.completed=true;
     const details=def.items.map(x=>`${x.label}：${q.values[x.key]||'待确认'}`).join('；');
-    collab.requirement={title:`${def.name}需求方案`,content:`原始需求：${allCustomerText()}；${details}`,time:now()};recordEvent('提交需求',collab.requirement.title);store();toast('需求方案已发送给实施顾问');
+    const isRevision=!!collab.requirement;collab.requirement={title:`${def.name}需求方案`,content:`原始需求：${allCustomerText()}；${details}`,time:now()};collab.revisionMode=false;recordEvent(isRevision?'提交需求修订版':'提交需求',collab.requirement.title);store();toast(isRevision?'需求修订版已重新发送给实施顾问':'需求方案已发送给实施顾问');
   }
   function showProjectMeta(){const p=collab.projectMeta||{};modal(`<div class="modal-head"><div><h2>项目基础资料</h2><p>三方协作共用；未填写的内容保持为空。</p></div><button data-close>×</button></div><div class="form-grid"><label class="field span2"><span>项目名称</span><input id="projectName" value="${esc(p.name)}" placeholder="请输入项目名称"></label><label class="field"><span>客户组织</span><input id="projectOrganization" value="${esc(p.organization)}" placeholder="未提供"></label><label class="field"><span>所属部门</span><input id="projectDepartment" value="${esc(p.department)}" placeholder="未提供"></label><label class="field"><span>项目负责人</span><input id="projectOwner" value="${esc(p.owner)}" placeholder="未提供"></label><label class="field"><span>计划完成日期</span><input id="projectPlanDate" type="date" value="${esc(p.planDate)}"></label></div><div class="modal-actions"><button class="secondary" data-close>取消</button><button class="primary" data-collab="saveProjectMeta">保存项目资料</button></div>`)}
   function showDoc(item,type){modal(`<div class="modal-head"><div><h2>${esc(item.title)}</h2><p>${type} · ${esc(item.version||'已确认版本')}</p></div><button data-close>×</button></div><div class="document-preview"><h3>${esc(item.title)}</h3><p>${esc(item.content)}</p>${attachedFile(item.file)}<h4>交付状态</h4><p>已确认并进入下一阶段。</p></div><div class="modal-actions"><button class="secondary" data-close>关闭</button>${item.file?`<button class="primary" data-collab="downloadFile" data-file-id="${item.file.id}">下载文件</button>`:''}</div>`)}
 
   document.addEventListener('click',async e=>{
+    if(e.target.closest('[data-view="assistant"]')){collab.role='customer';store();return}
     const role=e.target.closest('[data-role-switch]');if(role){collab.role=role.dataset.roleSwitch;store();return}
     const b=e.target.closest('[data-collab]');if(!b)return;
     const action=b.dataset.collab;
+    if(action==='openCustomerChat'){collab.role='customer';store();return}
     if(action==='askAI'){
       const input=document.querySelector('#privateInput'),text=input.value.trim();if(!text)return toast('请输入需要梳理的业务内容');
+      if(collab.pendingIntent)return toast('请先选择如何处理检测到的新业务主题');
+      const incomingType=detectType(text),currentType=collab.questionnaire?.type;
+      if(currentType&&currentType!=='generic'&&incomingType!=='generic'&&currentType!==incomingType){
+        collab.privateNotes.push({role:'customer',text,pendingIntent:true});collab.pendingIntent={type:incomingType,text};
+        collab.privateNotes.push({role:'ai',text:`检测到这段内容属于“${definitions[incomingType].name}”，与当前“${definitions[currentType].name}”不是同一项需求。请选择新建需求，或明确作为当前需求的补充说明。`});store();return;
+      }
       collab.privateNotes.push({role:'customer',text});
-      const combined=allCustomerText();collab.questionnaire=buildQuestionnaire(combined,collab.questionnaire);
+      const combined=allCustomerText();collab.questionnaire=buildQuestionnaire(combined,collab.questionnaire);if(collab.requirement){collab.questionnaire.completed=false;collab.revisionMode=true}
       const def=definitions[collab.questionnaire.type],stats=questionnaireStats(collab.questionnaire);
-      collab.privateNotes.push({role:'ai',text:`已识别为“${def.name}”需求，并从您的描述中自动填写了 ${stats.filled} 项。请只补充表格中标为“待补充”的内容。`});store();return;
+      collab.privateNotes.push({role:'ai',text:`已识别为“${def.name}”需求，当前表格已填写 ${stats.filled}/${stats.total} 项。${collab.revisionMode?'需求已进入修订状态，请确认后重新提交。':'请继续补充标为“待补充”的内容。'}`});store();return;
+    }
+    if(action==='startNewIntent'){
+      const pending=collab.pendingIntent;if(!pending)return;localStorage.setItem('erp-ai-next-requirement',JSON.stringify(pending));if(typeof startNewProject==='function')startNewProject();else toast('新项目入口尚未准备好，请稍后重试');return;
+    }
+    if(action==='keepCurrentIntent'){
+      const pending=collab.pendingIntent;if(!pending)return;const note=collab.privateNotes.find(n=>n.pendingIntent&&n.text===pending.text);if(note){note.pendingIntent=false;note.supplementOnly=true}collab.pendingIntent=null;if(collab.questionnaire){collab.questionnaire.completed=false;collab.revisionMode=true}collab.privateNotes.push({role:'ai',text:'已将这段内容保留为当前需求的补充说明，不会强行映射到不相关的表格字段。实施顾问将在修订版中进一步确认。'});store();return;
     }
     if(action==='submitQuestionnaire'){submitQuestionnaire();return}
     if(action==='submitImplementation'){
@@ -166,9 +188,15 @@
     if(action==='viewCode'&&collab.code)showDoc(collab.code,'开发交付');
   });
   document.addEventListener('change',e=>{if(e.target.id==='implementationFile'&&e.target.files[0])document.querySelector('#implementationFileHint').textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`;if(e.target.id==='codeFile'&&e.target.files[0])document.querySelector('#codeFileHint').textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`});
+  document.addEventListener('keydown',e=>{if(e.target.id==='privateInput'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.querySelector('[data-collab="askAI"]')?.click()}});
+  if(!collab.pendingIntent&&collab.questionnaire?.type){const currentType=collab.questionnaire.type,divergent=[...collab.privateNotes].reverse().find(n=>n.role==='customer'&&!n.pendingIntent&&detectType(n.text)!=='generic'&&detectType(n.text)!==currentType);if(divergent){const incomingType=detectType(divergent.text);divergent.pendingIntent=true;collab.pendingIntent={type:incomingType,text:divergent.text};collab.privateNotes.push({role:'ai',text:`检测到这段内容属于“${definitions[incomingType].name}”，与当前“${definitions[currentType].name}”不是同一项需求。请选择新建需求，或作为当前需求的补充说明。`});localStorage.setItem('erp-ai-collab',JSON.stringify(collab))}}
+  const queuedRequirement=JSON.parse(localStorage.getItem('erp-ai-next-requirement')||'null');
+  if(queuedRequirement&&!collab.privateNotes.length){collab.privateNotes=[{role:'customer',text:queuedRequirement.text}];collab.questionnaire=buildQuestionnaire(queuedRequirement.text,null);const def=definitions[collab.questionnaire.type],stats=questionnaireStats(collab.questionnaire);collab.privateNotes.push({role:'ai',text:`已新建“${def.name}”需求，并从刚才的描述中填写了 ${stats.filled}/${stats.total} 项。请继续补充右侧待确认内容。`});localStorage.removeItem('erp-ai-next-requirement');localStorage.setItem('erp-ai-collab',JSON.stringify(collab))}
   if(collab.questionnaire&&!collab.questionnaire.type&&allCustomerText()){
     collab.questionnaire=buildQuestionnaire(allCustomerText(),null);
     localStorage.setItem('erp-ai-collab',JSON.stringify(collab));
   }
-  window.renderResearch=render;render();
+  window.persistProjectFile=persistFile;
+  window.registerProjectCode=(projectId,item)=>{if(projectId&&collab.projectId!==projectId)return false;collab.code=item;collab.codeVersions.push({...item,note:item.content});collab.acceptance=null;recordEvent('提交开发交付',`${item.version} · ${item.file.name}`);store();return true};
+  window.openCustomerAssistant=()=>{collab.role='customer';store()};window.renderResearch=render;render();
 })();
