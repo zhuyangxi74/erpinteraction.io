@@ -319,6 +319,38 @@
 .modal:has(.project-detail-modal){width:min(1040px,100%)}
 .archived-acceptance{padding:16px;border:1px solid #e0e6ef;border-radius:12px}
 .archived-acceptance>div:first-child{display:flex;justify-content:space-between;margin-bottom:12px}
+.project-detail-artifacts{padding:0 20px 16px}
+.project-detail-artifacts .project-artifact{grid-template-columns:34px minmax(0,1fr) auto auto}
+.project-detail-artifacts .project-artifact .link{grid-column:auto;padding:8px 6px}
+.project-artifact.partial{border-color:#efcf94;background:#fffaf0;color:#604813}
+.project-artifact.partial i{background:#fff0ce;color:#96620b}
+.project-document-body{display:grid;gap:14px}
+.document-section{
+  padding:18px;
+  border:1px solid #e1e7ef;
+  border-radius:11px;
+  background:#fafbfd;
+}
+.document-section small,.project-file-box small{display:block;margin-bottom:7px;color:#7a8799}
+.document-section p{margin:0;white-space:pre-wrap;line-height:1.75;color:#334155}
+.project-file-box{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px 16px;
+  border:1px solid #cdddef;
+  border-radius:10px;
+  background:#f5f9ff;
+}
+.project-file-box>div{display:grid;gap:3px;min-width:0}
+.project-file-box b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-file-box span{color:#7a8799}
+.project-online-note,.project-file-missing{padding:13px 15px;border-radius:9px}
+.project-online-note{background:#eef8f4;color:#167156}
+.project-file-missing{display:grid;gap:4px;background:#fff5e4;color:#855b0e}
+.acceptance-item.partial{border-color:#efcf94;background:#fffaf0}
+.acceptance-item.partial>i{background:#fff0ce;color:#96620b}
 .acceptance-empty .acceptance-waiting{
   display:flex;
   align-items:center;
@@ -340,6 +372,10 @@
   .master-navigation .tabbar{border-bottom:1px solid #e0e6ee}
   .master-navigation #openMasterUpload{align-self:flex-start;margin-bottom:0}
   .acceptance-package,.acceptance-version{grid-template-columns:1fr}
+  .project-detail-meta{grid-template-columns:1fr}
+  .project-detail-artifacts .project-artifact{grid-template-columns:34px minmax(0,1fr)}
+  .project-detail-artifacts .project-artifact>button{grid-column:2;justify-self:start}
+  .project-file-box{align-items:stretch;flex-direction:column}
   .acceptance-title,.acceptance-test,.acceptance-actions{align-items:stretch;flex-direction:column}
   .acceptance-actions>span{margin-right:0}
 }
