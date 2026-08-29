@@ -1,10 +1,10 @@
 (function(){
-  const initial={role:'customer',projectId:`project-${Date.now()}`,projectMeta:{name:'',organization:'',department:'',owner:'',planDate:''},privateNotes:[],questionnaire:null,pendingIntent:null,requirement:null,implementation:null,implementationVersions:[],code:null,codeVersions:[],acceptance:null,events:[]};
+  const initial={role:'customer',projectId:`project-${Date.now()}`,projectMeta:{name:'',organization:'',department:'',owner:'',planDate:''},privateNotes:[],homeDraft:'',questionnaire:null,pendingIntent:null,requirement:null,consultantChat:[],consultantModel:'DeepSeek',consultantExcel:null,consultantAnalysis:null,implementation:null,implementationVersions:[],code:null,codeVersions:[],acceptance:null,events:[]};
   let collab=JSON.parse(localStorage.getItem('erp-ai-collab')||'null')||structuredClone(initial);
   if(!collab.projectId){collab.projectId=`project-${Date.now()}`;localStorage.setItem('erp-ai-collab',JSON.stringify(collab))}
-  collab.projectMeta=collab.projectMeta||structuredClone(initial.projectMeta);collab.implementationVersions=collab.implementationVersions||[];collab.codeVersions=collab.codeVersions||[];collab.events=collab.events||[];collab.pendingIntent=collab.pendingIntent||null;
+  collab.projectMeta=collab.projectMeta||structuredClone(initial.projectMeta);collab.homeDraft=collab.homeDraft||'';collab.consultantChat=collab.consultantChat||[];collab.consultantModel=collab.consultantModel||'DeepSeek';collab.consultantExcel=collab.consultantExcel||null;collab.consultantAnalysis=collab.consultantAnalysis||null;collab.implementationVersions=collab.implementationVersions||[];collab.codeVersions=collab.codeVersions||[];collab.events=collab.events||[];collab.pendingIntent=collab.pendingIntent||null;
   const roles={customer:'客户',consultant:'实施顾问',developer:'开发人员'};
-  const roleTips={customer:'您可以先与AI整理需求，确认后的方案再发送给实施顾问。',consultant:'查看客户确认后的需求方案，整理实施文档并发送给开发人员。',developer:'查看已确认需求和实施文档，完成开发交付。'};
+  const roleTips={customer:'您可以先与AI整理需求，确认后的方案再发送给实施顾问。',consultant:'在对话中上传Excel、选择AI模型，并确认AI整理出的开发任务。',developer:'查看已确认需求和实施文档，完成开发交付。'};
   const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const now=()=>new Date().toLocaleString();
   function store(){localStorage.setItem('erp-ai-collab',JSON.stringify(collab));render()}
@@ -117,10 +117,26 @@
     if(collab.code)blocks.push(`<div class="handoff developer"><div class="handoff-meta"><b>开发人员</b><span>完成交付 · ${collab.code.time}</span><em>三方可见</em></div><div class="handoff-card code-card"><span class="doc-type">开发交付 · ${esc(collab.code.version||'V1.0.0')}</span><span class="acceptance-pill ${collab.acceptance?.status||'pending'}">${collab.acceptance?.status==='accepted'?'客户已验收':collab.acceptance?.status==='rejected'?'客户已退回':'待客户验收'}</span><h3>${esc(collab.code.title)}</h3><p>${esc(collab.code.content)}</p>${attachedFile(collab.code.file)}<button class="secondary" data-collab="viewCode">查看开发交付</button></div></div>`);
     return blocks.join('');
   }
+  function consultantAnalysisData(){
+    const q=collab.questionnaire,values=q?.values||{};
+    const fields=values.fields||values.metrics||values.data||'待确认：接通AI接口后从Excel字段定义中解析';
+    const pages=values.output||'建议：列表页、新增/编辑页、详情页（可修改）';
+    const flow=values.approvers||values.owners||values.process||'待确认：请在Excel或对话中说明审批人员与顺序';
+    const rules=[values.amount||values.conditions,values.reject,values.timeout,values.exceptions].filter(Boolean).join('；')||'待确认：金额、驳回和超时规则尚未提供';
+    return {fields,pages,flow,rules};
+  }
+  function consultantChatView(){
+    const messages=collab.consultantChat.length?collab.consultantChat:[{role:'ai',text:'请上传顾问整理的可编辑Excel，并选择AI模型。我会把已确认需求预填成开发任务，缺失内容会明确标记为待确认。'}];
+    return `<section class="consultant-chat"><div class="consultant-chat-head"><div><span class="role-tag consultant">实施顾问 × AI</span><h3>通过对话形成开发任务</h3></div><span class="api-state">界面演示 · API未连接</span></div><div class="consultant-chat-log">${messages.map(message=>`<div class="consultant-message ${message.role}"><span>${message.role==='ai'?'AI':'顾问'}</span><p>${esc(message.text)}</p></div>`).join('')}</div><div class="consultant-upload"><div><b>上传可编辑Excel</b><small>支持 .xlsx、.xls、.csv；下载修改后可以重新上传</small></div><input id="consultantExcelFile" type="file" accept=".xlsx,.xls,.csv">${collab.consultantExcel?`<div class="consultant-file"><span><b>${esc(collab.consultantExcel.name)}</b><small>${fileSize(collab.consultantExcel.size||0)}</small></span><button class="link" data-collab="downloadFile" data-file-id="${collab.consultantExcel.id}">下载原Excel</button></div>`:'<div id="consultantExcelHint" class="consultant-file-empty">尚未选择Excel</div>'}</div><div class="consultant-model-row"><label><span>选择AI模型</span><select id="consultantModel"><option ${collab.consultantModel==='DeepSeek'?'selected':''}>DeepSeek</option><option ${collab.consultantModel==='Kimi'?'selected':''}>Kimi</option><option ${collab.consultantModel==='千问'?'selected':''}>千问</option></select></label><button class="primary" data-collab="consultantAnalyze">解析Excel并生成任务</button></div><div class="consultant-compose"><textarea id="consultantChatInput" rows="2" placeholder="继续告诉AI：需要哪些页面、流程、权限或接口…"></textarea><button class="secondary" data-collab="consultantAskAI">发送</button></div></section>`;
+  }
+  function consultantTaskView(){
+    const analysis=collab.consultantAnalysis||consultantAnalysisData(),ready=!!collab.consultantAnalysis;
+    return `<section class="consultant-task"><div class="consultant-task-head"><div><span>AI开发任务</span><h3>${ready?'已生成，可编辑确认':'等待Excel解析'}</h3></div>${ready?`<em>${esc(collab.consultantModel)} · 演示解析</em>`:''}</div>${ready?`<div class="consultant-analysis-grid"><label><span>业务字段</span><textarea id="analysisFields" rows="3">${esc(analysis.fields)}</textarea></label><label><span>页面方案</span><textarea id="analysisPages" rows="3">${esc(analysis.pages)}</textarea></label><label><span>审批流程</span><textarea id="analysisFlow" rows="3">${esc(analysis.flow)}</textarea></label><label><span>业务规则</span><textarea id="analysisRules" rows="3">${esc(analysis.rules)}</textarea></label></div><div class="consultant-functions"><b>选择要交给开发人员的功能</b><div><label><input type="checkbox" data-dev-function value="数据模型与字段" checked> 数据模型与字段</label><label><input type="checkbox" data-dev-function value="表单录入页面" checked> 表单录入页面</label><label><input type="checkbox" data-dev-function value="列表与详情页面" checked> 列表与详情页面</label><label><input type="checkbox" data-dev-function value="审批流程" checked> 审批流程</label><label><input type="checkbox" data-dev-function value="角色与权限" checked> 角色与权限</label><label><input type="checkbox" data-dev-function value="报表或ERP接口"> 报表或ERP接口</label></div></div><div class="consultant-submit-meta"><label><span>任务名称</span><input id="implementationTitle" value="${esc(collab.implementation?.title||'业务应用开发任务')}"></label><label><span>版本</span><input id="implementationVersion" value="${esc(collab.implementation?.version||'V1.0')}"></label><label class="full"><span>给开发人员的说明</span><textarea id="implementationNote" rows="2">${esc(collab.implementation?.content||'')}</textarea></label></div><div class="consultant-task-actions"><small>顾问确认后，Excel和开发功能清单将一起发送给开发人员。</small><button class="primary" data-collab="submitImplementation">${collab.implementation?'更新开发任务':'确认并提交开发任务'}</button></div>${versionHistory('implementation')}`:`<div class="consultant-task-empty"><i>1</i><span>上传Excel</span><em>→</em><i>2</i><span>选择AI模型</span><em>→</em><i>3</i><span>生成并确认任务</span><p>系统不会凭空补全Excel中不存在的内容，缺失项会标记为待确认。</p></div>`}</section>`;
+  }
   function privateArea(){
     if(collab.role==='consultant'){
-      if(!collab.requirement)return `<div class="role-workbench empty-workbench"><b>等待客户确认需求</b><span>客户提交需求方案后，您可以在这里上传实施方案、原型说明或配置清单。</span></div>`;
-      return `<div class="role-workbench"><div class="workbench-head"><div><span class="role-tag consultant">实施顾问工作台</span><h3>${collab.implementation?'更新实施文档':'提交实施文档'}</h3><p>基于客户确认的需求，上传可供开发人员执行的正式方案。</p></div><em>${collab.implementation?'已提交，可更新':'等待提交'}</em></div><div class="workbench-grid"><label class="field"><span>文档标题 *</span><input id="implementationTitle" value="${esc(collab.implementation?.title||'业务应用实施方案')}"></label><label class="field"><span>版本</span><input id="implementationVersion" value="${esc(collab.implementation?.version||'V1.0')}"></label><label class="field span2"><span>实施文件 *</span><input id="implementationFile" type="file" accept=".doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.zip"></label><label class="field span2"><span>实施说明</span><textarea id="implementationNote" rows="3" placeholder="说明数据模型、页面、流程、接口及实施注意事项">${esc(collab.implementation?.content||'')}</textarea></label></div><div id="implementationFileHint" class="selected-file">${collab.implementation?.file?`当前文件：${esc(collab.implementation.file.name)} · 上传新文件可替换`:'支持 Word、PDF、Excel、PPT 或 ZIP'}</div><div class="workbench-actions"><span>提交后，开发人员将在同一项目中收到文件。</span><button class="primary" data-collab="submitImplementation">${collab.implementation?'更新并重新提交':'提交给开发人员'}</button></div>${versionHistory('implementation')}</div>`;
+      if(!collab.requirement)return `<div class="role-workbench empty-workbench"><b>等待客户确认需求</b><span>客户提交需求方案后，您可以通过AI对话上传Excel并生成开发任务。</span></div>`;
+      return `<div class="consultant-chat-workspace">${consultantChatView()}${consultantTaskView()}</div>`;
     }
     if(collab.role==='developer'){
       if(!collab.implementation)return `<div class="role-workbench empty-workbench"><b>等待实施顾问提交方案</b><span>实施文档到达后，您可以上传源代码包、数据库脚本、接口文档和部署说明。</span></div>`;
@@ -130,7 +146,7 @@
     const intentChoice=collab.pendingIntent?`<div class="intent-switch"><div><span>检测到新的业务主题</span><b>“${definitions[collab.questionnaire?.type||'generic'].name}”与“${definitions[collab.pendingIntent.type]?.name||'新需求'}”不是同一项需求</b><p>请选择如何处理，系统不会再自动混入当前表格。</p></div><button class="primary" data-collab="startNewIntent">新建${definitions[collab.pendingIntent.type]?.name||''}需求（推荐）</button><button class="secondary" data-collab="keepCurrentIntent">作为当前需求的补充说明</button></div>`:'';
     const currentStep=collab.questionnaire?.completed&&collab.requirement?3:collab.questionnaire?2:1;
     const formContent=collab.questionnaire?questionnaireForm():`<div class="form-waiting"><span>02</span><h3>结构化需求表将在这里生成</h3><p>您在左侧描述业务后，AI会识别业务场景，并把已经明确的信息自动填写到表格中。</p><div><i>业务字段</i><i>使用范围</i><i>审批流程</i><i>业务规则</i></div></div>`;
-    return `<div class="customer-flow"><div class="customer-flow-head"><div><span class="role-tag customer">客户需求整理</span><h3>先对话，再确认表格</h3></div><div class="flow-progress">${[['1','与AI对话'],['2','补充需求表'],['3','提交顾问']].map((x,i)=>`<div class="${currentStep>i+1?'done':currentStep===i+1?'active':''}"><i>${currentStep>i+1?'✓':x[0]}</i><b>${x[1]}</b></div>`).join('<em>→</em>')}</div></div><div class="customer-flow-grid"><section class="dialog-lane"><div class="lane-head"><div><span class="lane-number">01</span><b>AI需求对话</b></div><small>用自己的话连续描述，AI会追问缺失内容</small></div><div class="dialog-log">${log}${intentChoice}</div><div class="dialog-compose"><textarea id="privateInput" rows="3" placeholder="${collab.pendingIntent?'请先处理上方检测到的新业务主题':'请输入业务想法、流程或需要解决的问题…'}" ${collab.pendingIntent?'disabled':''}></textarea><div><small>${collab.pendingIntent?'请选择新建需求或保留为补充说明':'发送后，右侧表格会同步更新'}</small><button class="primary" data-collab="askAI" ${collab.pendingIntent?'disabled':''}>发送给AI →</button></div></div></section><section class="form-lane"><div class="lane-head"><div><span class="lane-number">02</span><b>AI生成需求表</b></div><small>绿色为已识别，黄色为需要客户补充</small></div><div class="form-lane-body">${formContent}</div></section></div></div>`;
+    return `<div class="customer-flow"><div class="customer-flow-head"><div><span class="role-tag customer">客户需求整理</span><h3>先对话，再确认表格</h3></div><div class="flow-progress">${[['1','与AI对话'],['2','补充需求表'],['3','提交顾问']].map((x,i)=>`<div class="${currentStep>i+1?'done':currentStep===i+1?'active':''}"><i>${currentStep>i+1?'✓':x[0]}</i><b>${x[1]}</b></div>`).join('<em>→</em>')}</div></div><div class="customer-flow-grid"><section class="dialog-lane"><div class="lane-head"><div><span class="lane-number">01</span><b>AI需求对话</b></div><small>用自己的话连续描述，AI会追问缺失内容</small></div><div class="dialog-log">${log}${intentChoice}</div><div class="dialog-compose"><textarea id="privateInput" rows="3" placeholder="${collab.pendingIntent?'请先处理上方检测到的新业务主题':'请输入业务想法、流程或需要解决的问题…'}" ${collab.pendingIntent?'disabled':''}>${esc(collab.homeDraft)}</textarea><div><small>${collab.pendingIntent?'请选择新建需求或保留为补充说明':'发送后，右侧表格会同步更新'}</small><button class="primary" data-collab="askAI" ${collab.pendingIntent?'disabled':''}>发送给AI →</button></div></div></section><section class="form-lane"><div class="lane-head"><div><span class="lane-number">02</span><b>AI生成需求表</b></div><small>绿色为已识别，黄色为需要客户补充</small></div><div class="form-lane-body">${formContent}</div></section></div></div>`;
   }
   function render(){
     const root=document.querySelector('#assistant');if(!root)return;
@@ -163,7 +179,7 @@
         collab.privateNotes.push({role:'customer',text,pendingIntent:true});collab.pendingIntent={type:incomingType,text};
         collab.privateNotes.push({role:'ai',text:`检测到这段内容属于“${definitions[incomingType].name}”，与当前“${definitions[currentType].name}”不是同一项需求。请选择新建需求，或明确作为当前需求的补充说明。`});store();return;
       }
-      collab.privateNotes.push({role:'customer',text});
+      collab.privateNotes.push({role:'customer',text});collab.homeDraft='';
       const combined=allCustomerText();collab.questionnaire=buildQuestionnaire(combined,collab.questionnaire);if(collab.requirement){collab.questionnaire.completed=false;collab.revisionMode=true}
       const def=definitions[collab.questionnaire.type],stats=questionnaireStats(collab.questionnaire);
       collab.privateNotes.push({role:'ai',text:`已识别为“${def.name}”需求，当前表格已填写 ${stats.filled}/${stats.total} 项。${collab.revisionMode?'需求已进入修订状态，请确认后重新提交。':'请继续补充标为“待补充”的内容。'}`});store();return;
@@ -175,11 +191,29 @@
       const pending=collab.pendingIntent;if(!pending)return;const note=collab.privateNotes.find(n=>n.pendingIntent&&n.text===pending.text);if(note){note.pendingIntent=false;note.supplementOnly=true}collab.pendingIntent=null;if(collab.questionnaire){collab.questionnaire.completed=false;collab.revisionMode=true}collab.privateNotes.push({role:'ai',text:'已将这段内容保留为当前需求的补充说明，不会强行映射到不相关的表格字段。实施顾问将在修订版中进一步确认。'});store();return;
     }
     if(action==='submitQuestionnaire'){submitQuestionnaire();return}
+    if(action==='consultantAskAI'){
+      const input=document.querySelector('#consultantChatInput'),text=input?.value.trim();if(!text)return toast('请输入要补充的实施要求');
+      collab.consultantChat.push({role:'consultant',text});
+      collab.consultantChat.push({role:'ai',text:collab.consultantAnalysis?'补充要求已记录。请在右侧开发任务中直接修改字段、页面、流程和规则，确认后提交给开发人员。':'已记录。请继续上传Excel并选择AI模型，系统会生成可编辑的开发任务。'});
+      recordEvent('顾问补充AI对话',text);store();return;
+    }
+    if(action==='consultantAnalyze'){
+      const file=document.querySelector('#consultantExcelFile')?.files[0],model=document.querySelector('#consultantModel')?.value||'DeepSeek';
+      if(!file&&!collab.consultantExcel)return toast('请先选择要解析的Excel文件');
+      b.disabled=true;b.textContent='正在整理…';
+      try{
+        if(file)collab.consultantExcel=await persistFile(file);
+        collab.consultantModel=model;collab.consultantAnalysis=consultantAnalysisData();
+        collab.consultantChat.push({role:'consultant',text:`已上传Excel：${collab.consultantExcel.name}，选择${model}生成开发任务。`});
+        collab.consultantChat.push({role:'ai',text:'已基于客户确认需求生成可编辑任务。当前为前端演示解析；接通后端AI接口后，才会读取Excel单元格并自动识别字段、页面和审批规则。'});
+        recordEvent('AI整理顾问Excel',`${model} · ${collab.consultantExcel.name}`);store();toast('开发任务已生成，请在右侧检查和修改');
+      }catch(error){b.disabled=false;b.textContent='重新解析';toast('Excel保存失败，请重新选择文件')}return;
+    }
     if(action==='submitImplementation'){
-      const title=document.querySelector('#implementationTitle').value.trim(),file=document.querySelector('#implementationFile').files[0],existing=collab.implementation?.file;
-      if(!title)return toast('请填写实施文档标题');if(!file&&!existing)return toast('请选择要提交的实施文件');
+      const title=document.querySelector('#implementationTitle').value.trim(),file=document.querySelector('#implementationFile')?.files[0],existing=collab.implementation?.file||collab.consultantExcel;
+      if(!title)return toast('请填写开发任务名称');if(!collab.consultantAnalysis)return toast('请先上传Excel并生成开发任务');if(!file&&!existing)return toast('请上传顾问Excel');
       b.disabled=true;b.textContent='正在保存…';
-      try{const saved=file?await persistFile(file):existing;const item={title,version:document.querySelector('#implementationVersion').value.trim()||'V1.0',content:document.querySelector('#implementationNote').value.trim()||`已提交实施文件：${saved.name}`,file:saved,time:now()};collab.implementation=item;collab.implementationVersions.push({...item,note:item.content});recordEvent('提交实施文档',`${item.version} · ${saved.name}`);store();toast('实施文档已提交给开发人员')}catch(error){b.disabled=false;b.textContent='重新提交';toast('文件保存失败，请重试')}return;
+      try{const saved=file?await persistFile(file):existing,functions=[...document.querySelectorAll('[data-dev-function]:checked')].map(x=>x.value),analysis={fields:document.querySelector('#analysisFields')?.value.trim()||'待确认',pages:document.querySelector('#analysisPages')?.value.trim()||'待确认',flow:document.querySelector('#analysisFlow')?.value.trim()||'待确认',rules:document.querySelector('#analysisRules')?.value.trim()||'待确认'},extra=document.querySelector('#implementationNote').value.trim();collab.consultantAnalysis=analysis;const content=[`开发功能：${functions.join('、')||'待确认'}`,`业务字段：${analysis.fields}`,`页面方案：${analysis.pages}`,`审批流程：${analysis.flow}`,`业务规则：${analysis.rules}`,extra].filter(Boolean).join('；');const item={title,version:document.querySelector('#implementationVersion').value.trim()||'V1.0',content,file:saved,model:collab.consultantModel,time:now()};collab.implementation=item;collab.implementationVersions.push({...item,note:item.content});recordEvent('提交AI开发任务',`${item.version} · ${saved.name}`);store();toast('Excel和开发任务已提交给开发人员')}catch(error){b.disabled=false;b.textContent='重新提交';toast('文件保存失败，请重试')}return;
     }
     if(action==='submitCode'){
       const title=document.querySelector('#codeTitle').value.trim(),file=document.querySelector('#codeFile').files[0],existing=collab.code?.file;
@@ -205,8 +239,8 @@
     if(action==='viewImplementation'&&collab.implementation)showDoc(collab.implementation,'实施文档');
     if(action==='viewCode'&&collab.code)showDoc(collab.code,'开发交付');
   });
-  document.addEventListener('change',e=>{if(e.target.id==='implementationFile'&&e.target.files[0])document.querySelector('#implementationFileHint').textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`;if(e.target.id==='codeFile'&&e.target.files[0])document.querySelector('#codeFileHint').textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`});
-  document.addEventListener('keydown',e=>{if(e.target.id==='privateInput'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.querySelector('[data-collab="askAI"]')?.click()}});
+  document.addEventListener('change',e=>{if(e.target.id==='implementationFile'&&e.target.files[0])document.querySelector('#implementationFileHint').textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`;if(e.target.id==='consultantExcelFile'&&e.target.files[0]){const hint=document.querySelector('#consultantExcelHint');if(hint)hint.textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`};if(e.target.id==='codeFile'&&e.target.files[0])document.querySelector('#codeFileHint').textContent=`已选择：${e.target.files[0].name} · ${fileSize(e.target.files[0].size)}`});
+  document.addEventListener('keydown',e=>{if(e.target.id==='privateInput'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.querySelector('[data-collab="askAI"]')?.click()}if(e.target.id==='consultantChatInput'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.querySelector('[data-collab="consultantAskAI"]')?.click()}});
   if(!collab.pendingIntent&&collab.questionnaire?.type){const currentType=collab.questionnaire.type,divergent=[...collab.privateNotes].reverse().find(n=>n.role==='customer'&&!n.pendingIntent&&detectType(n.text)!=='generic'&&detectType(n.text)!==currentType);if(divergent){const incomingType=detectType(divergent.text);divergent.pendingIntent=true;collab.pendingIntent={type:incomingType,text:divergent.text};collab.privateNotes.push({role:'ai',text:`检测到这段内容属于“${definitions[incomingType].name}”，与当前“${definitions[currentType].name}”不是同一项需求。请选择新建需求，或作为当前需求的补充说明。`});localStorage.setItem('erp-ai-collab',JSON.stringify(collab))}}
   const queuedRequirement=JSON.parse(localStorage.getItem('erp-ai-next-requirement')||'null');
   if(queuedRequirement&&!collab.privateNotes.length){collab.privateNotes=[{role:'customer',text:queuedRequirement.text}];collab.questionnaire=buildQuestionnaire(queuedRequirement.text,null);const def=definitions[collab.questionnaire.type],stats=questionnaireStats(collab.questionnaire);collab.privateNotes.push({role:'ai',text:`已新建“${def.name}”需求，并从刚才的描述中填写了 ${stats.filled}/${stats.total} 项。请继续补充右侧待确认内容。`});localStorage.removeItem('erp-ai-next-requirement');localStorage.setItem('erp-ai-collab',JSON.stringify(collab))}
@@ -216,5 +250,5 @@
   }
   window.persistProjectFile=persistFile;
   window.registerProjectCode=(projectId,item)=>{if(projectId&&collab.projectId!==projectId)return false;collab.code=item;collab.codeVersions.push({...item,note:item.content});collab.acceptance=null;recordEvent('提交开发交付',`${item.version} · ${item.file.name}`);store();return true};
-  window.openCustomerAssistant=()=>{collab.role='customer';store()};window.renderCurrentAcceptance=acceptancePanel;window.downloadProjectFile=downloadStoredFile;window.renderResearch=render;render();
+  window.openCustomerAssistant=()=>{collab.role='customer';store()};window.loadHomeDraft=(text,model)=>{collab.role='customer';collab.homeDraft=text;collab.consultantModel=model||collab.consultantModel;store()};window.renderCurrentAcceptance=acceptancePanel;window.downloadProjectFile=downloadStoredFile;window.renderResearch=render;render();
 })();

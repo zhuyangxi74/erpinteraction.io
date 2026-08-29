@@ -122,7 +122,7 @@
   function newProject(){
     const collab=getCollab();
     if(collab.requirement||collab.implementation||collab.code||collab.questionnaire||(collab.privateNotes||[]).length){const history=getHistory(),archived=currentProject(collab,history.length);archived.current=false;history.push(archived);saveHistory(history)}
-    localStorage.setItem('erp-ai-collab',JSON.stringify({role:collab.role||'customer',projectId:'project-'+(Date.now()+1),projectMeta:{name:'',organization:'',department:'',owner:'',planDate:''},privateNotes:[],questionnaire:null,pendingIntent:null,requirement:null,implementation:null,implementationVersions:[],code:null,codeVersions:[],acceptance:null,events:[]}));
+    localStorage.setItem('erp-ai-collab',JSON.stringify({role:collab.role||'customer',projectId:'project-'+(Date.now()+1),projectMeta:{name:'',organization:'',department:'',owner:'',planDate:''},privateNotes:[],homeDraft:'',questionnaire:null,pendingIntent:null,requirement:null,consultantChat:[],consultantModel:'DeepSeek',consultantExcel:null,consultantAnalysis:null,implementation:null,implementationVersions:[],code:null,codeVersions:[],acceptance:null,events:[]}));
     location.reload();
   }
 
